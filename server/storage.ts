@@ -4,6 +4,7 @@ import {
   authRequests, 
   verificationRequests, 
   passkeys,
+  notifications,
   type User, 
   type InsertUser, 
   type Video,
@@ -16,10 +17,12 @@ import {
   type InsertPasskey,
   type VideoWithUploader,
   type AuthRequestWithCreator,
-  type VerificationRequestWithDetails
+  type VerificationRequestWithDetails,
+  type Notification,
+  type InsertNotification
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, or, ilike, sql } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -29,7 +32,8 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   getVips(): Promise<User[]>;
   
-  getVideos(): Promise<VideoWithUploader[]>;
+  getVideos(search?: string): Promise<VideoWithUploader[]>;
+  getCreatorStats(creatorId: string): Promise<{ totalVideos: number; totalViews: number; verifiedCount: number; pendingCount: number; rejectedCount: number }>;
   getVideoById(id: string): Promise<VideoWithUploader | undefined>;
   getVideosByUploader(uploaderId: string): Promise<VideoWithUploader[]>;
   createVideo(video: InsertVideo): Promise<Video>;
@@ -49,6 +53,12 @@ export interface IStorage {
   getPasskeyByCredentialId(credentialId: string): Promise<Passkey | undefined>;
   createPasskey(passkey: InsertPasskey): Promise<Passkey>;
   updatePasskeyCounter(id: string, counter: number): Promise<void>;
+  
+  getNotifications(userId: string): Promise<Notification[]>;
+  getUnreadNotificationCount(userId: string): Promise<number>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationRead(id: string): Promise<void>;
+  markAllNotificationsRead(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -80,8 +90,35 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users).where(eq(users.role, "vip"));
   }
 
-  async getVideos(): Promise<VideoWithUploader[]> {
+  async getCreatorStats(creatorId: string): Promise<{ totalVideos: number; totalViews: number; verifiedCount: number; pendingCount: number; rejectedCount: number }> {
+    const creatorVideos = await db.select().from(videos).where(eq(videos.uploaderId, creatorId));
+    const totalVideos = creatorVideos.length;
+    const totalViews = creatorVideos.reduce((sum, v) => sum + (v.viewCount || 0), 0);
+
+    let verifiedCount = 0;
+    let pendingCount = 0;
+    let rejectedCount = 0;
+
+    for (const video of creatorVideos) {
+      const verifications = await db.select().from(verificationRequests).where(eq(verificationRequests.videoId, video.id));
+      const hasVerified = verifications.some(v => v.status === "verified");
+      const hasRejected = verifications.some(v => v.status === "rejected");
+      const hasPending = verifications.some(v => v.status === "pending");
+      
+      if (hasVerified) verifiedCount++;
+      else if (hasRejected) rejectedCount++;
+      else if (hasPending) pendingCount++;
+    }
+
+    return { totalVideos, totalViews, verifiedCount, pendingCount, rejectedCount };
+  }
+
+  async getVideos(search?: string): Promise<VideoWithUploader[]> {
     const result = await db.query.videos.findMany({
+      where: search ? or(
+        ilike(videos.title, `%${search}%`),
+        ilike(videos.description, `%${search}%`)
+      ) : undefined,
       with: {
         uploader: true,
         verificationRequests: {
@@ -229,6 +266,33 @@ export class DatabaseStorage implements IStorage {
 
   async updatePasskeyCounter(id: string, counter: number): Promise<void> {
     await db.update(passkeys).set({ counter }).where(eq(passkeys.id, id));
+  }
+
+  async getNotifications(userId: string): Promise<Notification[]> {
+    return db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50);
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+    return Number(result[0]?.count || 0);
+  }
+
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [created] = await db.insert(notifications).values(notification).returning();
+    return created;
+  }
+
+  async markNotificationRead(id: string): Promise<void> {
+    await db.update(notifications).set({ read: true }).where(eq(notifications.id, id));
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    await db.update(notifications).set({ read: true }).where(eq(notifications.userId, userId));
   }
 }
 

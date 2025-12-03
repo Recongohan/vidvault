@@ -11,6 +11,7 @@ import {
   FileCheck,
   ChevronLeft,
   ChevronRight,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { label: "Home", href: "/", icon: Home },
   { label: "Upload", href: "/upload", icon: Upload, roles: ["creator", "admin"], requiresAuth: true },
   { label: "My Dashboard", href: "/dashboard", icon: LayoutDashboard, requiresAuth: true },
+  { label: "Analytics", href: "/analytics", icon: BarChart3, roles: ["creator", "admin"], requiresAuth: true },
 ];
 
 const adminItems: NavItem[] = [

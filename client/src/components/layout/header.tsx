@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notifications";
 import { useAuth } from "@/lib/auth";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
@@ -77,6 +78,8 @@ export function Header({ onSearch }: HeaderProps) {
 
         <div className="flex items-center gap-2">
           <ThemeToggle />
+          
+          {user && <NotificationBell />}
           
           {user ? (
             <DropdownMenu>

@@ -11,6 +11,7 @@ import SignupPage from "@/pages/signup";
 import UploadPage from "@/pages/upload";
 import DashboardPage from "@/pages/dashboard";
 import VideoPage from "@/pages/video";
+import AnalyticsPage from "@/pages/analytics";
 import AdminRequestsPage from "@/pages/admin/requests";
 import AdminUsersPage from "@/pages/admin/users";
 import VIPQueuePage from "@/pages/vip/queue";
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/signup" component={SignupPage} />
       <Route path="/upload" component={UploadPage} />
       <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/analytics" component={AnalyticsPage} />
       <Route path="/video/:id" component={VideoPage} />
       <Route path="/admin/requests" component={AdminRequestsPage} />
       <Route path="/admin/users" component={AdminUsersPage} />
