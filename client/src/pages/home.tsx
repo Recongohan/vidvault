@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { VideoGrid } from "@/components/video-grid";
@@ -6,19 +6,26 @@ import type { VideoWithUploader } from "@shared/schema";
 
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const { data: videos = [], isLoading } = useQuery<VideoWithUploader[]>({
-    queryKey: ["/api/videos", searchQuery],
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const { data: videos = [], isLoading, isFetching } = useQuery<VideoWithUploader[]>({
+    queryKey: ["/api/videos", { search: debouncedSearch }],
+    queryFn: async () => {
+      const url = debouncedSearch 
+        ? `/api/videos?search=${encodeURIComponent(debouncedSearch)}`
+        : "/api/videos";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch videos");
+      return res.json();
+    },
   });
-
-  const filteredVideos = searchQuery
-    ? videos.filter(
-        (v) =>
-          v.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          v.uploader.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          v.uploader.username.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : videos;
 
   return (
     <MainLayout onSearch={setSearchQuery}>
@@ -29,11 +36,11 @@ export default function HomePage() {
           </h1>
           <p className="text-muted-foreground text-sm">
             {searchQuery
-              ? `${filteredVideos.length} result${filteredVideos.length !== 1 ? "s" : ""} found`
+              ? `${videos.length} result${videos.length !== 1 ? "s" : ""} found`
               : "Watch and verify authentic content"}
           </p>
         </div>
-        <VideoGrid videos={filteredVideos} isLoading={isLoading} />
+        <VideoGrid videos={videos} isLoading={isLoading || isFetching} />
       </div>
     </MainLayout>
   );

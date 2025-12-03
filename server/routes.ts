@@ -2,10 +2,11 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import session from "express-session";
 import { storage } from "./storage";
-import { loginSchema, signupSchema, type User } from "@shared/schema";
+import { loginSchema, signupSchema, type User, type Notification } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { WebSocketServer, WebSocket } from "ws";
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -137,6 +138,26 @@ function requireRole(...roles: string[]) {
   };
 }
 
+const wsConnections = new Map<string, Set<WebSocket>>();
+
+function broadcastToUser(userId: string, message: object) {
+  const connections = wsConnections.get(userId);
+  if (connections) {
+    const payload = JSON.stringify(message);
+    connections.forEach(ws => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(payload);
+      }
+    });
+  }
+}
+
+async function createAndBroadcastNotification(notification: { userId: string; type: string; title: string; message: string; link?: string }) {
+  const created = await storage.createNotification(notification);
+  broadcastToUser(notification.userId, { type: "notification", data: created });
+  return created;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -233,7 +254,8 @@ export async function registerRoutes(
 
   app.get("/api/videos", async (req, res) => {
     try {
-      const videos = await storage.getVideos();
+      const search = req.query.search as string | undefined;
+      const videos = await storage.getVideos(search);
       res.json(videos);
     } catch (error) {
       res.status(500).json({ error: "Server error" });
@@ -257,6 +279,15 @@ export async function registerRoutes(
     try {
       const videos = await storage.getVideosByUploader(req.session.userId!);
       res.json(videos);
+    } catch (error) {
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.get("/api/my-stats", requireAuth, async (req, res) => {
+    try {
+      const stats = await storage.getCreatorStats(req.session.userId!);
+      res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Server error" });
     }
@@ -303,6 +334,14 @@ export async function registerRoutes(
             videoId: video.id,
             vipId,
           });
+          
+          await createAndBroadcastNotification({
+            userId: vipId,
+            type: "verification_request",
+            title: "New Verification Request",
+            message: `${user.displayName || user.username} has requested your verification for "${title}".`,
+            link: "/vip/queue",
+          });
         }
       }
 
@@ -348,6 +387,18 @@ export async function registerRoutes(
       }
 
       const request = await storage.createAuthRequest({ creatorId: user.id });
+      
+      const admins = (await storage.getAllUsers()).filter(u => u.role === "admin");
+      for (const admin of admins) {
+        await createAndBroadcastNotification({
+          userId: admin.id,
+          type: "auth_request",
+          title: "New Authorization Request",
+          message: `${user.displayName || user.username} has requested VIP verification access.`,
+          link: "/admin/requests",
+        });
+      }
+      
       res.json(request);
     } catch (error) {
       res.status(500).json({ error: "Server error" });
@@ -566,6 +617,76 @@ export async function registerRoutes(
     res.setHeader("Accept-Ranges", "bytes");
     next();
   }, express.static(uploadDir));
+
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    try {
+      const notifications = await storage.getNotifications(req.session.userId!);
+      res.json(notifications);
+    } catch (error) {
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
+    try {
+      const count = await storage.getUnreadNotificationCount(req.session.userId!);
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post("/api/notifications/:id/read", requireAuth, async (req, res) => {
+    try {
+      await storage.markNotificationRead(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
+    try {
+      await storage.markAllNotificationsRead(req.session.userId!);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+
+  wss.on("connection", (ws) => {
+    let connectedUserId: string | null = null;
+
+    ws.on("message", async (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        if (message.type === "auth" && message.userId) {
+          connectedUserId = message.userId as string;
+          if (!wsConnections.has(connectedUserId)) {
+            wsConnections.set(connectedUserId, new Set());
+          }
+          wsConnections.get(connectedUserId)!.add(ws);
+          ws.send(JSON.stringify({ type: "connected", userId: connectedUserId }));
+        }
+      } catch (error) {
+        console.error("WebSocket message error:", error);
+      }
+    });
+
+    ws.on("close", () => {
+      if (connectedUserId) {
+        const connections = wsConnections.get(connectedUserId);
+        if (connections) {
+          connections.delete(ws);
+          if (connections.size === 0) {
+            wsConnections.delete(connectedUserId);
+          }
+        }
+      }
+    });
+  });
 
   return httpServer;
 }
