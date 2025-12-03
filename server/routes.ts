@@ -728,7 +728,7 @@ export async function registerRoutes(
         authenticatorSelection: {
           residentKey: "required",
           userVerification: "required",
-          authenticatorAttachment: "platform",
+          authenticatorAttachment: "cross-platform",
         },
       });
 
