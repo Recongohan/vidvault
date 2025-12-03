@@ -520,6 +520,89 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/vip/verification-requests/batch/:action", requireRole("vip"), async (req, res) => {
+    try {
+      const user = (req as any).user as User;
+      const action = req.params.action as "verify" | "reject" | "ignore";
+      const { requestIds, authResult } = req.body;
+
+      if (!["verify", "reject", "ignore"].includes(action)) {
+        return res.status(400).json({ error: "Invalid action" });
+      }
+
+      if (!Array.isArray(requestIds) || requestIds.length === 0) {
+        return res.status(400).json({ error: "No request IDs provided" });
+      }
+
+      const verificationRequests = await Promise.all(
+        requestIds.map((id) => storage.getVerificationRequest(id))
+      );
+
+      const invalidRequests = verificationRequests.filter(
+        (vr, i) => !vr || vr.vipId !== user.id || vr.status !== "pending"
+      );
+
+      if (invalidRequests.length > 0) {
+        return res.status(400).json({ error: "Some requests are invalid or not pending" });
+      }
+
+      if (action !== "ignore") {
+        const passkeys = await storage.getPasskeysByUser(user.id);
+        if (passkeys.length === 0) {
+          return res.status(400).json({ error: "No passkey registered" });
+        }
+
+        if (!authResult) {
+          return res.status(400).json({ error: "Passkey verification required" });
+        }
+
+        try {
+          const passkey = passkeys.find(
+            (p) => p.credentialId === authResult.id
+          );
+          if (!passkey) {
+            return res.status(400).json({ error: "Passkey not found" });
+          }
+
+          const { rpID, origin } = getWebAuthnConfig(req);
+
+          const verification = await verifyAuthenticationResponse({
+            response: authResult,
+            expectedChallenge: req.session.challenge || "",
+            expectedOrigin: origin,
+            expectedRPID: rpID,
+            credential: {
+              id: passkey.credentialId,
+              publicKey: Buffer.from(passkey.publicKey, "base64url"),
+              counter: passkey.counter,
+              transports: passkey.transports?.split(",") as AuthenticatorTransportFuture[] || undefined,
+            },
+          });
+
+          if (!verification.verified) {
+            return res.status(400).json({ error: "Passkey verification failed" });
+          }
+
+          await storage.updatePasskeyCounter(passkey.id, verification.authenticationInfo.newCounter);
+        } catch (error) {
+          console.error("Batch auth verification error:", error);
+          return res.status(400).json({ error: "Passkey verification failed" });
+        }
+      }
+
+      const status = action === "verify" ? "verified" : action === "reject" ? "rejected" : "ignored";
+      
+      const results = await Promise.all(
+        requestIds.map((id: string) => storage.updateVerificationRequestStatus(id, status))
+      );
+
+      res.json({ success: true, processed: results.length });
+    } catch (error) {
+      console.error("Batch verification error:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
   app.post("/api/webauthn/register/options", requireRole("vip"), async (req, res) => {
     try {
       const user = (req as any).user as User;

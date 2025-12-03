@@ -44,6 +44,7 @@ export interface IStorage {
   createAuthRequest(request: InsertAuthRequest): Promise<AuthRequest>;
   updateAuthRequestStatus(id: string, status: "approved" | "rejected"): Promise<AuthRequest | undefined>;
   
+  getVerificationRequest(id: string): Promise<VerificationRequest | undefined>;
   getVerificationRequestsByVip(vipId: string): Promise<VerificationRequestWithDetails[]>;
   getVerificationRequestsByVideo(videoId: string): Promise<(VerificationRequest & { vip: User })[]>;
   createVerificationRequest(request: InsertVerificationRequest): Promise<VerificationRequest>;
@@ -209,6 +210,11 @@ export class DatabaseStorage implements IStorage {
     }
     
     return updated || undefined;
+  }
+
+  async getVerificationRequest(id: string): Promise<VerificationRequest | undefined> {
+    const [request] = await db.select().from(verificationRequests).where(eq(verificationRequests.id, id));
+    return request || undefined;
   }
 
   async getVerificationRequestsByVip(vipId: string): Promise<VerificationRequestWithDetails[]> {
