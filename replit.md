@@ -13,7 +13,12 @@ VideoVault is a web application where users can upload and watch videos. Only ve
 - Can approve or reject authorization requests from creators
 - Can manage all users
 
-### Creators (Uploaders)
+### Sample Creators (Pre-created with auth approved)
+- Sarah Mitchell (Tech Reviewer): `sarah` / `sarah123`
+- Mike Johnson (Travel Vlogger): `mike` / `mike123`
+- Emma Davis (Food Creator): `emma` / `emma123`
+
+### Creating New Creators
 - Sign up to create an account
 - Can upload videos
 - Cannot request VIP verification by default
