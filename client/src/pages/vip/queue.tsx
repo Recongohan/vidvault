@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   CheckCircle, 
   XCircle, 
@@ -13,7 +14,8 @@ import {
   Loader2,
   Ban,
   Fingerprint,
-  Video
+  Video,
+  CheckSquare
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +29,8 @@ export default function VIPQueuePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
   const { data: requests = [], isLoading } = useQuery<VerificationRequestWithDetails[]>({
     queryKey: ["/api/vip/verification-requests"],
@@ -37,6 +41,27 @@ export default function VIPQueuePage() {
     queryKey: ["/api/vip/has-passkey"],
     enabled: user?.role === "vip",
   });
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAll = () => {
+    const pendingIds = requests.filter((r) => r.status === "pending").map((r) => r.id);
+    setSelectedIds(new Set(pendingIds));
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
 
   const verifyMutation = useMutation({
     mutationFn: async ({ requestId, action }: { requestId: string; action: "verify" | "reject" | "ignore" }) => {
@@ -88,6 +113,72 @@ export default function VIPQueuePage() {
         variant: "destructive" 
       });
       setProcessingId(null);
+    },
+  });
+
+  const batchMutation = useMutation({
+    mutationFn: async ({ action }: { action: "verify" | "reject" | "ignore" }) => {
+      setIsBatchProcessing(true);
+      const requestIds = Array.from(selectedIds);
+      
+      if (action !== "ignore" && hasPasskey?.hasPasskey) {
+        const challengeRes = await fetch("/api/webauthn/authenticate/options", {
+          method: "POST",
+        });
+        const options = await challengeRes.json();
+        
+        if (!challengeRes.ok) {
+          throw new Error(options.error || "Failed to get authentication challenge");
+        }
+        
+        const authResult = await startAuthentication({ optionsJSON: options });
+        
+        const res = await fetch(`/api/vip/verification-requests/batch/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestIds, authResult }),
+        });
+        
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Batch action failed");
+        }
+        
+        return res.json();
+      } else {
+        const res = await fetch(`/api/vip/verification-requests/batch/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestIds }),
+        });
+        
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Batch action failed");
+        }
+        
+        return res.json();
+      }
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vip/verification-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
+      const actionText = variables.action === "verify" ? "verified" : 
+                         variables.action === "reject" ? "rejected" : "ignored";
+      toast({ 
+        title: `Batch ${actionText}`, 
+        description: `${selectedIds.size} video(s) have been ${actionText} successfully.`
+      });
+      setSelectedIds(new Set());
+      setIsBatchProcessing(false);
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Batch action failed", 
+        description: error.message || "Something went wrong. Make sure your passkey is registered.",
+        variant: "destructive" 
+      });
+      setIsBatchProcessing(false);
     },
   });
 
@@ -172,15 +263,94 @@ export default function VIPQueuePage() {
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5" />
-              Pending Verifications
-            </CardTitle>
-            <CardDescription>
-              {pendingRequests.length} video{pendingRequests.length !== 1 ? "s" : ""} awaiting your verification
-            </CardDescription>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5" />
+                  Pending Verifications
+                </CardTitle>
+                <CardDescription>
+                  {pendingRequests.length} video{pendingRequests.length !== 1 ? "s" : ""} awaiting your verification
+                </CardDescription>
+              </div>
+              {pendingRequests.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={selectedIds.size === pendingRequests.length ? clearSelection : selectAll}
+                    data-testid="button-select-all"
+                  >
+                    <CheckSquare className="h-4 w-4 mr-1" />
+                    {selectedIds.size === pendingRequests.length ? "Deselect All" : "Select All"}
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardHeader>
-          <CardContent>
+
+          {selectedIds.size > 0 && (
+            <div className="px-6 pb-4 pt-0">
+              <Card className="bg-muted/50">
+                <CardContent className="py-3 flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-sm font-medium">
+                    {selectedIds.size} video{selectedIds.size !== 1 ? "s" : ""} selected
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      onClick={() => batchMutation.mutate({ action: "verify" })}
+                      disabled={isBatchProcessing || !hasPasskey?.hasPasskey}
+                      className="bg-success hover:bg-success/90"
+                      data-testid="button-batch-verify"
+                    >
+                      {isBatchProcessing ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : (
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                      )}
+                      Verify All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => batchMutation.mutate({ action: "reject" })}
+                      disabled={isBatchProcessing || !hasPasskey?.hasPasskey}
+                      data-testid="button-batch-reject"
+                    >
+                      {isBatchProcessing ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : (
+                        <XCircle className="h-4 w-4 mr-1" />
+                      )}
+                      Reject All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => batchMutation.mutate({ action: "ignore" })}
+                      disabled={isBatchProcessing}
+                      data-testid="button-batch-ignore"
+                    >
+                      <Ban className="h-4 w-4 mr-1" />
+                      Ignore All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearSelection}
+                      disabled={isBatchProcessing}
+                      data-testid="button-clear-selection"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <CardContent className={selectedIds.size > 0 ? "pt-0" : ""}>
             {isLoading ? (
               <div className="space-y-4">
                 {[1, 2, 3].map((i) => (
@@ -197,11 +367,17 @@ export default function VIPQueuePage() {
                 {pendingRequests.map((request) => (
                   <div
                     key={request.id}
-                    className="p-4 rounded-lg border bg-card"
+                    className={`p-4 rounded-lg border bg-card ${selectedIds.has(request.id) ? "ring-2 ring-primary" : ""}`}
                     data-testid={`verification-request-${request.id}`}
                   >
                     <div className="flex gap-4">
-                      <div className="w-40 aspect-video rounded-lg bg-muted flex-shrink-0 overflow-hidden">
+                      <Checkbox
+                        checked={selectedIds.has(request.id)}
+                        onCheckedChange={() => toggleSelection(request.id)}
+                        className="mt-8 flex-shrink-0"
+                        data-testid={`checkbox-${request.id}`}
+                      />
+                      <div className="w-36 aspect-video rounded-lg bg-muted flex-shrink-0 overflow-hidden">
                         {request.video.thumbnailUrl ? (
                           <img 
                             src={request.video.thumbnailUrl} 
@@ -233,7 +409,7 @@ export default function VIPQueuePage() {
                               : "recently"}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Button
                             size="sm"
                             onClick={() => verifyMutation.mutate({ requestId: request.id, action: "verify" })}
