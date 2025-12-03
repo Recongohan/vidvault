@@ -27,7 +27,7 @@ export default function UploadPage() {
   const [selectedVips, setSelectedVips] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const { data: vips = [] } = useQuery<User[]>({
+  const { data: vips = [], isLoading: vipsLoading } = useQuery<User[]>({
     queryKey: ["/api/vips"],
     enabled: !!user?.isAuthApproved,
   });
@@ -210,45 +210,64 @@ export default function UploadPage() {
                 </div>
               </div>
               
-              {user.isAuthApproved && vips.length > 0 && (
+              {user.isAuthApproved && (
                 <div className="space-y-3">
                   <Label>Request Verification (Optional)</Label>
                   <p className="text-sm text-muted-foreground">
                     Select VIPs to verify your video authenticity
                   </p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {vips.map((vip) => (
-                      <div
-                        key={vip.id}
-                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                          selectedVips.includes(vip.id)
-                            ? "border-primary bg-primary/5"
-                            : "hover:bg-muted/50"
-                        }`}
-                        onClick={() => toggleVip(vip.id)}
-                        data-testid={`vip-select-${vip.id}`}
-                      >
-                        <Checkbox
-                          checked={selectedVips.includes(vip.id)}
-                          onCheckedChange={() => toggleVip(vip.id)}
-                        />
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={vip.avatarUrl || undefined} />
-                          <AvatarFallback>
-                            {(vip.displayName || vip.username).slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            {vip.displayName || vip.username}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {vip.title} • {vip.country}
-                          </p>
+                  {vipsLoading ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="flex items-center gap-3 p-3 rounded-lg border animate-pulse">
+                          <div className="h-4 w-4 rounded bg-muted"></div>
+                          <div className="h-10 w-10 rounded-full bg-muted"></div>
+                          <div className="flex-1 space-y-2">
+                            <div className="h-4 w-24 bg-muted rounded"></div>
+                            <div className="h-3 w-32 bg-muted rounded"></div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : vips.length > 0 ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {vips.map((vip) => (
+                        <div
+                          key={vip.id}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            selectedVips.includes(vip.id)
+                              ? "border-primary bg-primary/5"
+                              : "hover:bg-muted/50"
+                          }`}
+                          onClick={() => toggleVip(vip.id)}
+                          data-testid={`vip-select-${vip.id}`}
+                        >
+                          <Checkbox
+                            checked={selectedVips.includes(vip.id)}
+                            onCheckedChange={() => toggleVip(vip.id)}
+                          />
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={vip.avatarUrl || undefined} />
+                            <AvatarFallback>
+                              {(vip.displayName || vip.username).slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">
+                              {vip.displayName || vip.username}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {vip.title} • {vip.country}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-lg bg-muted/50 border border-dashed text-center">
+                      <p className="text-sm text-muted-foreground">No VIPs available for verification</p>
+                    </div>
+                  )}
                 </div>
               )}
               

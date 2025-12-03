@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { useRoute } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { 
@@ -17,18 +20,67 @@ import {
   Send,
   Shield,
   Upload,
-  Ban
+  Ban,
+  ShieldPlus,
+  Loader2
 } from "lucide-react";
 import type { VideoWithUploader, VerificationRequest, User as UserType } from "@shared/schema";
 import { formatDistanceToNow, format } from "date-fns";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function VideoPage() {
   const [, params] = useRoute("/video/:id");
   const videoId = params?.id;
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [selectedVips, setSelectedVips] = useState<string[]>([]);
 
   const { data: video, isLoading } = useQuery<VideoWithUploader>({
     queryKey: ["/api/videos", videoId],
     enabled: !!videoId,
+  });
+
+  const isOwner = user && video && video.uploaderId === user.id;
+  const canRequestVerification = !!(isOwner && user?.isAuthApproved);
+
+  const { data: vips = [], isLoading: vipsLoading } = useQuery<UserType[]>({
+    queryKey: ["/api/vips"],
+    enabled: canRequestVerification,
+  });
+
+  const requestedVipIds = video?.verificationRequests?.map(vr => vr.vipId) || [];
+  const availableVips = (vips as UserType[]).filter((vip: UserType) => !requestedVipIds.includes(vip.id));
+
+  const toggleVip = (vipId: string) => {
+    setSelectedVips(prev =>
+      prev.includes(vipId)
+        ? prev.filter(id => id !== vipId)
+        : [...prev, vipId]
+    );
+  };
+
+  const requestVerificationMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/videos/${videoId}/verification-requests`, { vipIds: selectedVips });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/videos", videoId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-videos"] });
+      setSelectedVips([]);
+      toast({ 
+        title: "Verification requested", 
+        description: `Request sent to ${selectedVips.length} VIP${selectedVips.length > 1 ? "s" : ""}` 
+      });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Request failed", 
+        description: error.message || "Something went wrong",
+        variant: "destructive" 
+      });
+    },
   });
 
   if (isLoading) {
@@ -309,6 +361,72 @@ export default function VideoPage() {
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {canRequestVerification && availableVips.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ShieldPlus className="h-5 w-5" />
+                  Request VIP Verification
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Select VIPs to verify your video authenticity
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2 mb-4">
+                  {availableVips.map((vip) => (
+                    <div
+                      key={vip.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedVips.includes(vip.id)
+                          ? "border-primary bg-primary/5"
+                          : "hover:bg-muted/50"
+                      }`}
+                      onClick={() => toggleVip(vip.id)}
+                      data-testid={`vip-request-${vip.id}`}
+                    >
+                      <Checkbox
+                        checked={selectedVips.includes(vip.id)}
+                        onCheckedChange={(e) => e.stopPropagation()}
+                      />
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={vip.avatarUrl || undefined} />
+                        <AvatarFallback>
+                          {(vip.displayName || vip.username).slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">
+                          {vip.displayName || vip.username}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {vip.title} • {vip.country}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  onClick={() => requestVerificationMutation.mutate()}
+                  disabled={selectedVips.length === 0 || requestVerificationMutation.isPending}
+                  data-testid="button-request-verification"
+                >
+                  {requestVerificationMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Requesting...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Request Verification ({selectedVips.length})
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           )}

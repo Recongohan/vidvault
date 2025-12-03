@@ -21,22 +21,18 @@ export function VideoCard({ video }: VideoCardProps) {
   const getVerificationBadge = () => {
     if (verifiedBy) {
       return (
-        <div className="absolute top-2 right-2 z-10">
-          <Badge className="bg-success text-success-foreground gap-1 shadow-lg">
-            <CheckCircle className="h-3 w-3" />
-            Verified by {verifiedBy.vip.displayName}
-          </Badge>
-        </div>
+        <Badge className="bg-success text-success-foreground gap-1 flex-shrink-0">
+          <CheckCircle className="h-3 w-3" />
+          Verified
+        </Badge>
       );
     }
     if (rejectedBy) {
       return (
-        <div className="absolute top-2 right-2 z-10">
-          <Badge variant="destructive" className="gap-1 shadow-lg">
-            <XCircle className="h-3 w-3" />
-            Rejected by {rejectedBy.vip.displayName}
-          </Badge>
-        </div>
+        <Badge variant="destructive" className="gap-1 flex-shrink-0">
+          <XCircle className="h-3 w-3" />
+          Suspicious
+        </Badge>
       );
     }
     const hasPending = video.verificationRequests?.some(
@@ -44,12 +40,10 @@ export function VideoCard({ video }: VideoCardProps) {
     );
     if (hasPending) {
       return (
-        <div className="absolute top-2 right-2 z-10">
-          <Badge variant="secondary" className="gap-1 shadow-lg">
-            <Clock className="h-3 w-3" />
-            Pending verification
-          </Badge>
-        </div>
+        <Badge variant="secondary" className="gap-1 flex-shrink-0">
+          <Clock className="h-3 w-3" />
+          Pending
+        </Badge>
       );
     }
     return null;
@@ -81,7 +75,6 @@ export function VideoCard({ video }: VideoCardProps) {
               </span>
             </div>
           )}
-          {getVerificationBadge()}
         </div>
         <div className="p-3">
           <div className="flex gap-3">
@@ -97,12 +90,15 @@ export function VideoCard({ video }: VideoCardProps) {
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <h3 
-                className="font-semibold text-sm line-clamp-2 leading-tight mb-1"
-                data-testid={`video-title-${video.id}`}
-              >
-                {video.title}
-              </h3>
+              <div className="flex items-start gap-2 mb-1">
+                <h3 
+                  className="font-semibold text-sm line-clamp-2 leading-tight flex-1"
+                  data-testid={`video-title-${video.id}`}
+                >
+                  {video.title}
+                </h3>
+                {getVerificationBadge()}
+              </div>
               <p className="text-xs text-muted-foreground truncate">
                 {video.uploader.displayName || video.uploader.username}
               </p>
