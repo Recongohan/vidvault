@@ -63,7 +63,7 @@ function getWebAuthnConfig(req: Request) {
   return { rpID, origin };
 }
 
-async function seedVips() {
+async function seedDatabase() {
   const vipData = [
     { username: "Anthony", displayName: "Anthony", title: "CEO", country: "USA", avatarUrl: "/vip-avatars/anthony.png" },
     { username: "Charles", displayName: "Charles", title: "President", country: "UK", avatarUrl: "/vip-avatars/charles.png" },
@@ -93,6 +93,111 @@ async function seedVips() {
       role: "admin",
     });
     console.log("Created admin user");
+  }
+
+  const creatorData = [
+    { username: "sarah", password: "sarah123", displayName: "Sarah Mitchell", title: "Tech Reviewer" },
+    { username: "mike", password: "mike123", displayName: "Mike Johnson", title: "Travel Vlogger" },
+    { username: "emma", password: "emma123", displayName: "Emma Davis", title: "Food Creator" },
+  ];
+
+  const createdCreators: { id: string; displayName: string }[] = [];
+  for (const creator of creatorData) {
+    const existing = await storage.getUserByUsername(creator.username);
+    if (!existing) {
+      const user = await storage.createUser({
+        ...creator,
+        role: "creator",
+        isAuthApproved: true,
+      });
+      createdCreators.push({ id: user.id, displayName: creator.displayName });
+      console.log(`Created creator: ${creator.username}`);
+    } else {
+      createdCreators.push({ id: existing.id, displayName: existing.displayName || creator.displayName });
+    }
+  }
+
+  const existingVideos = await storage.getVideos();
+  if (existingVideos.length === 0 && createdCreators.length > 0) {
+    const sampleVideos = [
+      {
+        title: "iPhone 15 Pro Max - Complete Review",
+        description: "In-depth review of Apple's latest flagship phone. We cover camera performance, battery life, and the new titanium design.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[0].id,
+        viewCount: 15420,
+      },
+      {
+        title: "Best Laptop for Programming in 2024",
+        description: "Comparing the top laptops for developers - MacBook Pro vs ThinkPad vs Dell XPS. Performance benchmarks included.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[0].id,
+        viewCount: 8730,
+      },
+      {
+        title: "Hidden Gems of Bali - Travel Guide",
+        description: "Discover the secret beaches and temples that most tourists never see. A complete guide to exploring Bali like a local.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[1].id,
+        viewCount: 23150,
+      },
+      {
+        title: "Solo Travel in Japan - 2 Weeks Itinerary",
+        description: "Everything you need to know about traveling solo in Japan. From Tokyo to Kyoto, including budget tips and must-see spots.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[1].id,
+        viewCount: 45200,
+      },
+      {
+        title: "Perfect Homemade Pizza Recipe",
+        description: "Learn to make restaurant-quality pizza at home. Includes dough recipe, sauce tips, and baking techniques.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[2].id,
+        viewCount: 67800,
+      },
+      {
+        title: "5 Minute Breakfast Ideas for Busy Mornings",
+        description: "Quick and healthy breakfast recipes that anyone can make. Perfect for those rushed weekday mornings.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[2].id,
+        viewCount: 34500,
+      },
+      {
+        title: "Gaming Setup Tour 2024",
+        description: "Check out my ultimate gaming and streaming setup. Full gear list and cable management tips included.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1616588589676-62b3bd4ff6d2?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[0].id,
+        viewCount: 19800,
+      },
+      {
+        title: "Backpacking Through Europe on a Budget",
+        description: "How I traveled through 10 countries in 30 days for under $2000. Money-saving tips and hostel recommendations.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[1].id,
+        viewCount: 52300,
+      },
+      {
+        title: "Authentic Thai Green Curry Recipe",
+        description: "Learn to make Thai green curry from scratch, including homemade curry paste. Restaurant-quality results guaranteed.",
+        thumbnailUrl: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=640&h=360&fit=crop",
+        videoUrl: "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        uploaderId: createdCreators[2].id,
+        viewCount: 28900,
+      },
+    ];
+
+    for (const videoData of sampleVideos) {
+      await storage.createVideo(videoData);
+    }
+    console.log(`Created ${sampleVideos.length} sample videos`);
   }
 }
 
@@ -179,7 +284,7 @@ export async function registerRoutes(
     })
   );
 
-  await seedVips();
+  await seedDatabase();
 
   app.post("/api/auth/login", async (req, res) => {
     try {
