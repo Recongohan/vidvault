@@ -1,0 +1,63 @@
+I have this repo : now the new code u did i want u to mark it as 1.2 version in readme.md and update accordingly. Old readme : # VideoVault - Secure Video Platform A secure video platform with biometric approval system, built with React, Express, PostgreSQL, and WebAuthn. ## Overview VideoVault allows users to upload, view, and manage videos with a built-in biometric approval system. Videos can only be marked as "approved" by users who have registered biometric credentials (Face ID/Touch ID). The platform features Clerk authentication, object storage for videos, and a custom SHA256 signature system for approved content. ## Tech Stack - **Frontend**: React 18 + TypeScript, Vite, Wouter (routing), TanStack Query - **Backend**: Node.js, Express.js - **Database**: PostgreSQL with Drizzle ORM - **Authentication**: Clerk (primary auth) + WebAuthn (biometric approvals) - **Storage**: Replit Object Storage for video files - **UI**: Shadcn/ui components, Radix UI, Tailwind CSS - **Forms**: React Hook Form + Zod validation ## Prerequisites - Node.js 18+ - PostgreSQL database - Clerk account (for authentication) - Replit Object Storage or similar S3-compatible storage ## Local Setup ### 1. Clone and Install
+bash
+git clone <your-repo-url>
+cd videovault
+npm install
+### 2. Environment Variables Create a .env file in the root directory:
+env
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/videovault
+
+# Clerk Authentication
+CLERK_SECRET_KEY=your_clerk_secret_key
+VITE_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+
+# Session Secret
+SESSION_SECRET=your_random_session_secret
+
+# Object Storage (Replit Object Storage or S3-compatible)
+BUCKET_ID=your_bucket_id
+PUBLIC_OBJECT_SEARCH_PATHS=public
+PRIVATE_OBJECT_DIR=.private
+
+# Domain (for WebAuthn)
+REPL_SLUG=your-app-name
+REPLIT_DEPLOYMENT=1  # Set to 1 for production, remove for development
+### 3. Database Setup
+bash
+# Push schema to database
+npm run db:push
+
+# If you encounter data loss warnings, force push
+npm run db:push -- --force
+### 4. Run the Application
+bash
+npm run dev
+The application will run on http://localhost:5000 ## Database Schema ### Tables **user_settings** - clerk_user_id (text, primary key) - Links to Clerk user ID - can_approve_videos (boolean, default false) - Permission flag - biometric_status (text, default 'none') - Values: 'none', 'registered', 'approved' **user_biometrics** - id (serial, primary key) - clerk_user_id (text, references user_settings) - credential_id (text, unique) - WebAuthn credential identifier - public_key (text) - WebAuthn public key - counter (integer) - WebAuthn signature counter - device_type (text) - Device information **videos** - id (serial, primary key) - title (text) - description (text) - file_url (text) - Object storage URL - uploader_clerk_id (text) - Clerk user ID of uploader - category (text) - is_approved (boolean, default false) - approval_signature (text, nullable) - SHA256 signature for approved videos - uploaded_at (timestamp) ## Key Features ### 1. User Authentication - Primary authentication via Clerk (email/password, social login) - User data fetched from Clerk API dynamically - Session management for biometric state ### 2. Biometric Approval System - Two-step process: - **Step 1**: Register biometric credentials (Face ID/Touch ID) - **Step 2**: Request admin approval to gain approval permissions - WebAuthn-based passkey authentication - Cross-device support (QR codes for mobile biometric registration) - Admin approval required before users can approve videos ### 3. Video Management - Upload videos with title, description, and category - Object storage integration for file hosting - Only biometrically-approved users can mark videos as approved - SHA256 signatures generated for approved videos (never exposed in API) ### 4. Admin Panel - Restricted to admin@gmail.com - View and approve/deny biometric registration requests - Manage user approval permissions ## Project Structure
+├── client/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ui/                    # Shadcn UI components
+│   │   │   └── SimpleBiometricPrompt.tsx  # WebAuthn registration/auth
+│   │   ├── pages/
+│   │   │   ├── home.tsx               # Landing page
+│   │   │   ├── dashboard.tsx          # Video gallery + biometric setup
+│   │   │   ├── admin.tsx              # Admin panel
+│   │   │   └── upload.tsx             # Video upload form
+│   │   ├── lib/
+│   │   │   └── queryClient.ts         # TanStack Query config
+│   │   └── App.tsx                    # Main app with routing
+├── server/
+│   ├── routes.ts                      # All API endpoints
+│   ├── storage.ts                     # Database interface (Drizzle)
+│   ├── webauthn-simple.ts             # WebAuthn service (clean implementation)
+│   ├── clerk-service.ts               # Clerk API integration
+│   └── index.ts                       # Express server setup
+├── shared/
+│   └── schema.ts                      # Drizzle schema + Zod validation
+└── db/
+    └── index.ts                       # Database connection
+## Important Files for AI Context When re-feeding this project to an AI assistant, provide these key files: ### Core Architecture 1. **shared/schema.ts** - Database schema, types, and validation 2. **server/storage.ts** - Storage interface and database operations 3. **server/routes.ts** - All API endpoints ### Authentication & Security 4. **server/webauthn-simple.ts** - WebAuthn implementation (credential management) 5. **server/clerk-service.ts** - Clerk API integration 6. **client/src/components/SimpleBiometricPrompt.tsx** - Frontend biometric flow ### Frontend 7. **client/src/pages/dashboard.tsx** - Main user interface 8. **client/src/App.tsx** - Routing and layout 9. **client/src/lib/queryClient.ts** - API client configuration ### Configuration 10. **this README.md** - Project overview and context 11. **replit.md** - User preferences and recent changes ## API Endpoints ### Authentication - POST /api/auth/session - Get current user session - POST /api/auth/logout - Logout user ### WebAuthn - POST /api/webauthn/register/begin - Start biometric registration - POST /api/webauthn/register/finish - Complete biometric registration - POST /api/webauthn/login/begin - Start biometric authentication - POST /api/webauthn/login/finish - Complete biometric authentication - POST /api/webauthn/request-approval - Request admin approval for permissions ### Videos - GET /api/videos - Get all videos - POST /api/videos - Upload new video - POST /api/videos/:id/approve - Approve video (requires biometric auth) ### Admin - GET /api/admin/pending-approvals - Get pending biometric approval requests - POST /api/admin/approve-user - Approve user for video approval permissions - POST /api/admin/deny-user - Deny user approval request ### Users - GET /api/users/:userId - Get user details from Clerk ## Security Features 1. **Signature Protection**: Approval signatures stored only in database, never exposed via API 2. **Biometric Authentication**: WebAuthn-based passkey system for secure approvals 3. **Admin Controls**: Only designated admin can grant approval permissions 4. **Clerk Integration**: Enterprise-grade authentication with automatic user management 5. **Session Management**: Secure session handling with express-session ## Development Notes ### WebAuthn Implementation The current WebAuthn system is a clean, simplified implementation that: - Stores credentials in PostgreSQL (not localStorage) - Uses exact credential ID matching for authentication - Supports cross-device authentication (QR codes + mobile Face ID/Touch ID) - Follows standard WebAuthn flow patterns ### Database Migrations Always use Drizzle for schema changes:
+bash
+npm run db:push
+Never write manual SQL migrations. ### Clerk User Management Users are managed in Clerk. The local database only stores: - Biometric credentials - Approval permissions - User settings User details (name, email, etc.) are fetched from Clerk API in real-time. ## Troubleshooting ### "No matching passkeys" error - Ensure credential IDs are stored and retrieved correctly - Check that the domain matches between registration and authentication - Verify WebAuthn is enabled in browser settings ### Database connection issues - Verify DATABASE_URL is correct - Ensure PostgreSQL is running - Check firewall settings ### Clerk authentication errors - Verify CLERK_SECRET_KEY and VITE_CLERK_PUBLISHABLE_KEY are set - Check Clerk dashboard for application status - Ensure domain is whitelisted in Clerk settings ## Production Deployment Current production URL: videovaults.replit.app For production deployment: 1. Set REPLIT_DEPLOYMENT=1 environment variable 2. Configure Clerk with production domain 3. Set up object storage bucket 4. Update WebAuthn configuration for production domain 5. Use secure SESSION_SECRET ## License Private project - All rights reserved ## Support
