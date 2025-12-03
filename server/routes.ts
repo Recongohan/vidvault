@@ -457,6 +457,67 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/videos/:id/verification-requests", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(401).json({ error: "User not found" });
+      }
+
+      if (!user.isAuthApproved) {
+        return res.status(403).json({ error: "Not authorized to request VIP verification" });
+      }
+
+      const video = await storage.getVideoById(req.params.id);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      if (video.uploaderId !== user.id) {
+        return res.status(403).json({ error: "You can only request verification for your own videos" });
+      }
+
+      const { vipIds } = req.body;
+      if (!vipIds || !Array.isArray(vipIds) || vipIds.length === 0) {
+        return res.status(400).json({ error: "Please select at least one VIP" });
+      }
+
+      const uniqueVipIds = [...new Set(vipIds as string[])];
+      
+      for (const vipId of uniqueVipIds) {
+        const vipUser = await storage.getUser(vipId);
+        if (!vipUser || vipUser.role !== "vip") {
+          return res.status(400).json({ error: `Invalid VIP ID: ${vipId}` });
+        }
+      }
+
+      const existingRequests = video.verificationRequests || [];
+      const existingVipIds = existingRequests.map(vr => vr.vipId);
+
+      const newVipIds = uniqueVipIds.filter((id: string) => !existingVipIds.includes(id));
+
+      for (const vipId of newVipIds) {
+        await storage.createVerificationRequest({
+          videoId: video.id,
+          vipId,
+        });
+
+        await createAndBroadcastNotification({
+          userId: vipId,
+          type: "verification_request",
+          title: "New Verification Request",
+          message: `${user.displayName || user.username} has requested your verification for "${video.title}".`,
+          link: "/vip/queue",
+        });
+      }
+
+      res.json({ success: true, requested: newVipIds.length });
+    } catch (error) {
+      console.error("Verification request error:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
   app.get("/api/vips", requireAuth, async (req, res) => {
     try {
       const vips = await storage.getVips();

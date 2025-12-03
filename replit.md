@@ -82,6 +82,7 @@ VideoVault is a web application where users can upload and watch videos. Only ve
 - `GET /api/videos/:id` - Get video by ID
 - `GET /api/my-videos` - Get user's videos
 - `POST /api/videos` - Upload video (multipart form)
+- `POST /api/videos/:id/verification-requests` - Request VIP verification for existing video
 - `GET /api/vips` - Get list of VIPs
 
 ### Auth Requests

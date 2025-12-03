@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import type { User } from "@shared/schema";
+import { queryClient } from "./queryClient";
 
 interface AuthContextType {
   user: User | null;
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const data = await response.json();
       if (response.ok) {
+        queryClient.clear();
         setUser(data.user);
         return { success: true };
       }
@@ -76,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } finally {
+      queryClient.clear();
       setUser(null);
     }
   };
