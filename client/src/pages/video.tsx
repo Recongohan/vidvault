@@ -1,19 +1,25 @@
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { 
   CheckCircle, 
   XCircle, 
   Clock,
   Eye,
   Calendar,
-  User
+  User,
+  History,
+  Send,
+  Shield,
+  Upload,
+  Ban
 } from "lucide-react";
-import type { VideoWithUploader } from "@shared/schema";
+import type { VideoWithUploader, VerificationRequest, User as UserType } from "@shared/schema";
 import { formatDistanceToNow, format } from "date-fns";
 
 export default function VideoPage() {
@@ -63,6 +69,94 @@ export default function VideoPage() {
     if (count >= 1000) return `${(count / 1000).toFixed(1)}K views`;
     return `${count} views`;
   };
+
+  type TimelineEvent = {
+    id: string;
+    type: "upload" | "request" | "verified" | "rejected" | "ignored" | "pending";
+    title: string;
+    description: string;
+    timestamp: Date | null;
+    user?: UserType;
+    icon: React.ElementType;
+    iconClass: string;
+  };
+
+  const buildTimeline = (): TimelineEvent[] => {
+    if (!video) return [];
+    
+    const events: TimelineEvent[] = [];
+    
+    if (video.createdAt) {
+      events.push({
+        id: "upload",
+        type: "upload",
+        title: "Video Uploaded",
+        description: `${video.uploader.displayName || video.uploader.username} uploaded this video`,
+        timestamp: new Date(video.createdAt),
+        user: video.uploader,
+        icon: Upload,
+        iconClass: "text-blue-500 bg-blue-500/10",
+      });
+    }
+
+    if (video.verificationRequests) {
+      video.verificationRequests.forEach((vr) => {
+        events.push({
+          id: `request-${vr.id}`,
+          type: "request",
+          title: "Verification Requested",
+          description: `Sent to ${vr.vip.displayName || vr.vip.username} for verification`,
+          timestamp: vr.createdAt ? new Date(vr.createdAt) : null,
+          user: vr.vip,
+          icon: Send,
+          iconClass: "text-muted-foreground bg-muted",
+        });
+
+        if (vr.status === "verified" && vr.processedAt) {
+          events.push({
+            id: `verified-${vr.id}`,
+            type: "verified",
+            title: "Video Verified",
+            description: `${vr.vip.displayName || vr.vip.username} verified this video with passkey`,
+            timestamp: new Date(vr.processedAt),
+            user: vr.vip,
+            icon: Shield,
+            iconClass: "text-success bg-success/10",
+          });
+        } else if (vr.status === "rejected" && vr.processedAt) {
+          events.push({
+            id: `rejected-${vr.id}`,
+            type: "rejected",
+            title: "Video Rejected",
+            description: `${vr.vip.displayName || vr.vip.username} rejected this video`,
+            timestamp: new Date(vr.processedAt),
+            user: vr.vip,
+            icon: Ban,
+            iconClass: "text-destructive bg-destructive/10",
+          });
+        } else if (vr.status === "ignored" && vr.processedAt) {
+          events.push({
+            id: `ignored-${vr.id}`,
+            type: "ignored",
+            title: "Request Ignored",
+            description: `${vr.vip.displayName || vr.vip.username} ignored the verification request`,
+            timestamp: new Date(vr.processedAt),
+            user: vr.vip,
+            icon: XCircle,
+            iconClass: "text-muted-foreground bg-muted",
+          });
+        }
+      });
+    }
+
+    return events.sort((a, b) => {
+      if (!a.timestamp) return 1;
+      if (!b.timestamp) return -1;
+      return a.timestamp.getTime() - b.timestamp.getTime();
+    });
+  };
+
+  const timeline = buildTimeline();
 
   return (
     <MainLayout>
@@ -165,16 +259,18 @@ export default function VideoPage() {
 
           {video.verificationRequests && video.verificationRequests.length > 0 && (
             <Card>
-              <CardContent className="pt-4">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Verification Details
-                </h3>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  VIP Verification Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-3">
                   {video.verificationRequests.map((vr) => (
-                    <div key={vr.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <div key={vr.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50" data-testid={`verification-status-${vr.id}`}>
                       <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
+                        <Avatar className="h-10 w-10">
                           <AvatarImage src={vr.vip.avatarUrl || undefined} />
                           <AvatarFallback className="text-xs">
                             {(vr.vip.displayName || vr.vip.username).slice(0, 2).toUpperCase()}
@@ -187,24 +283,87 @@ export default function VideoPage() {
                           </p>
                         </div>
                       </div>
-                      <Badge
-                        className={
-                          vr.status === "verified"
-                            ? "bg-success text-success-foreground"
-                            : vr.status === "rejected"
-                            ? "bg-destructive text-destructive-foreground"
-                            : vr.status === "pending"
-                            ? "bg-warning text-warning-foreground"
-                            : ""
-                        }
-                      >
-                        {vr.status === "verified" && <CheckCircle className="h-3 w-3 mr-1" />}
-                        {vr.status === "rejected" && <XCircle className="h-3 w-3 mr-1" />}
-                        {vr.status === "pending" && <Clock className="h-3 w-3 mr-1" />}
-                        {vr.status}
-                      </Badge>
+                      <div className="text-right">
+                        <Badge
+                          className={
+                            vr.status === "verified"
+                              ? "bg-success text-success-foreground"
+                              : vr.status === "rejected"
+                              ? "bg-destructive text-destructive-foreground"
+                              : vr.status === "pending"
+                              ? "bg-warning text-warning-foreground"
+                              : ""
+                          }
+                        >
+                          {vr.status === "verified" && <CheckCircle className="h-3 w-3 mr-1" />}
+                          {vr.status === "rejected" && <XCircle className="h-3 w-3 mr-1" />}
+                          {vr.status === "pending" && <Clock className="h-3 w-3 mr-1" />}
+                          {vr.status}
+                        </Badge>
+                        {vr.processedAt && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formatDistanceToNow(new Date(vr.processedAt), { addSuffix: true })}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {timeline.length > 1 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Verification Timeline
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative">
+                  <div className="absolute left-5 top-0 bottom-0 w-px bg-border" />
+                  <div className="space-y-6">
+                    {timeline.map((event, index) => (
+                      <div 
+                        key={event.id} 
+                        className="relative flex gap-4 items-start"
+                        data-testid={`timeline-event-${event.id}`}
+                      >
+                        <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full ${event.iconClass}`}>
+                          <event.icon className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 pt-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium text-sm">{event.title}</p>
+                            {event.timestamp && (
+                              <span className="text-xs text-muted-foreground">
+                                {format(event.timestamp, "MMM d, yyyy 'at' h:mm a")}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-0.5">
+                            {event.description}
+                          </p>
+                          {event.user && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={event.user.avatarUrl || undefined} />
+                                <AvatarFallback className="text-xs">
+                                  {(event.user.displayName || event.user.username).slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-xs text-muted-foreground">
+                                {event.user.displayName || event.user.username}
+                                {event.user.title && ` • ${event.user.title}`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </CardContent>
             </Card>
