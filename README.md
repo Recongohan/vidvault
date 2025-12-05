@@ -1,4 +1,5 @@
-# VideoVault v1.2
+# VideoVault v1.2 (Formerly VeriVid)
+### - By Sadiq Mohammed Sayed
 
 A YouTube-style video platform with WebAuthn passkey verification by VIPs to combat fake and AI-generated videos.
 
